@@ -176,6 +176,36 @@ class StreamingHTTPResponse(BaseHTTPResponse):
                )
 
 
+class GeneratorStreamResponse(StreamingHTTPResponse):
+    __slots__ = (
+        'transport', 'generator', 'separator',
+        'status', 'content_type', 'headers', '_cookies')
+
+    def __init__(self, generator, separator, status=200, headers=None,
+                 content_type='text/plain'):
+        self.content_type = content_type
+        self.separator = separator
+        self.generator = generator
+        self.status = status
+        self.headers = headers or {}
+        self._cookies = None
+
+    async def stream(
+            self, version="1.1", keep_alive=False, keep_alive_timeout=None):
+        """Streams headers, runs the `streaming_fn` callback that writes
+        content to the response body, then finalizes the response body.
+        """
+        headers = self.get_headers(
+            version, keep_alive=keep_alive,
+            keep_alive_timeout=keep_alive_timeout)
+        self.transport.write(headers)
+
+        for each in self.generator:
+            self.write(each + self.separator)
+
+        self.transport.write(b'0\r\n\r\n')
+
+
 class HTTPResponse(BaseHTTPResponse):
     __slots__ = ('body', 'status', 'content_type', 'headers', '_cookies')
 
@@ -308,6 +338,21 @@ async def file(location, mime_type=None, headers=None, _range=None):
                         headers=headers,
                         content_type=mime_type,
                         body_bytes=out_stream)
+
+
+def generator_stream(
+        generator, status=200, headers=None,
+        content_type="text/plain; charset=utf-8", separator='\n'):
+    """Accepts a `generator` which is written to the response separated by a
+    given `separator` to form a streaming response. Returns a
+    `GeneratorStreamResponse`"""
+    return GeneratorStreamResponse(
+        generator,
+        separator=separator,
+        headers=headers,
+        content_type=content_type,
+        status=status,
+    )
 
 
 def stream(

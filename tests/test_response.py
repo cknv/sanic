@@ -3,7 +3,7 @@ import pytest
 from random import choice
 
 from sanic import Sanic
-from sanic.response import HTTPResponse, stream, StreamingHTTPResponse
+from sanic.response import HTTPResponse, stream, generator_stream, StreamingHTTPResponse
 from sanic.testing import HOST, PORT
 
 from unittest.mock import MagicMock
@@ -94,3 +94,27 @@ def test_stream_response_writes_correct_content_to_transport(streaming_app):
         app.stop()
 
     streaming_app.run(host=HOST, port=PORT)
+
+
+@pytest.fixture
+def generator_streaming_app():
+    app = Sanic('generator_streaming')
+
+    def items():
+        yield from range(5)
+
+    @app.route("/")
+    async def test(request):
+        str_items = (
+            str(each)
+            for each in items()
+        )
+
+        return generator_stream(str_items, separator=',', content_type='text/csv')
+
+    return app
+
+
+def test_streaming_returns_correct_content(generator_streaming_app):
+    request, response = generator_streaming_app.test_client.get('/')
+    assert response.text == '0,1,2,3,4,'
